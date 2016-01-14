@@ -13,17 +13,19 @@
 #
 # HISTORY
 #
-#   Version: 1.1
+#   Version: 1.2
 #
-#   - v.1.0	Steve Miller, 16.12.2015	Used Joe Farage "AdobeReaderUpdate.sh as starting point
-#   - v.1.1	Steve Miller, 16.12.2015	Updated to copy echo commands into JSS policy logs
+#   - v.1.0	Steve Miller, 16.12.2015:	Used Joe Farage "AdobeReaderUpdate.sh as starting point
+#   - v.1.1	Steve Miller, 16.12.2015:	Updated to copy echo commands into JSS policy logs
+#   - v.1.2	Steve Miller, 21.12.2015:	Updated umount command to use hdiutil. 10.9 issues previous command
 #
 ####################################################################################################
 # Script to download and install Adobe Flash.
 # Only works on Intel systems.
 
 dmgfile="flash.dmg"
-dmgmount="Flash Player"
+dmgmount="/Volume/Flash Player"
+mntpoint=`diskutil list | grep Flash | awk '{print $7}' `
 volname="Flash"
 logfile="/Library/Logs/FlashUpdateScript.log"
 
@@ -39,30 +41,30 @@ if [ '`/usr/bin/uname -p`'="i386" -o '`/usr/bin/uname -p`'="x86_64" ]; then
     latestver=``
     while [ -z "$latestver" ]
     do
-    	latestver=`/usr/bin/curl -s http://www.adobe.com/software/flash/about/ | sed -n '/Safari/,/<\/tr/s/[^>]*>\([0-9].*\)<.*/\1/p'`
-	done
-	
-	echo "Latest Version is: $latestver"
-	latestvernorm=`echo $ {latestver} `
+        latestver=`/usr/bin/curl -s http://www.adobe.com/software/flash/about/ | sed -n '/Safari/,/<\/tr/s/[^>]*>\([0-9].*\)<.*/\1/p'`
+    done
+
+    echo "Latest Version is: $latestver"
+    latestvernorm=`echo $ {latestver} `
     # Get the version number of the currently installed Adobe Flash, if any.
     if [ -e "/Library/Internet Plug-Ins/Flash Player.plugin/Contents/" ]; then
-		currentinstalledver=`/usr/bin/defaults read "/Library/Internet Plug-Ins/Flash Player.plugin/Contents/Info" CFBundleShortVersionString`
-    	echo "Currently installed version is: $currentinstalledver"
-    	if [ "${latestver}" != "${currentinstalledver}" ]; then
-    		echo "Adobe Flash is current. Exiting"
-    		exit 0
-    	fi
+        currentinstalledver=`/usr/bin/defaults read "/Library/Internet Plug-Ins/Flash Player.plugin/Contents/Info" CFBundleShortVersionString`
+        echo "Currently installed version is: $currentinstalledver"
+        if [ "${latestver}" = "${currentinstalledver}" ]; then
+            echo "Adobe Flash is current. Exiting"
+            exit 0
+        fi
     else
        currentinstalledver="none"
        echo "Adobe Flash is not installed"
     fi
-    
-    
+
+
     shortver=${latestver:0:2}
     echo "Flash Short version: $shortver"
     url1="http://fpdownload.macromedia.com/get/flashplayer/current/licensing/mac/install_flash_player_${shortver}_osx.dmg"
 
-	#Build URL  
+    #Build URL  
     url=`echo "${url1}"`
     echo "Latest version of the URL is: $url"
     
@@ -78,20 +80,22 @@ if [ '`/usr/bin/uname -p`'="i386" -o '`/usr/bin/uname -p`'="x86_64" ]; then
         /bin/echo "`date`: Installing..." >> ${logfile}
         /usr/sbin/installer -pkg /Volumes/Flash\ Player/Install\ Adobe\ Flash\ Player.app/Contents/Resources/Adobe\ Flash\ Player.pkg -target / > /dev/null
         
+        #Unmount DMG and deleting tmp files
         /bin/sleep 10
         /bin/echo "`date`: Unmounting installer disk image." >> ${logfile}
-        #/usr/bin/hdiutil detach $(/bin/df | /usr/bin/grep ${volname} | awk '{print $1}') -quiet
-        /sbin/umount "/Volumes/${dmgmount}"
+        mntpoint=`diskutil list | grep Flash | awk '{print $7}' `
+        /bin/echo The mount point is "$mntpoint"
+        hdiutil unmount $mntpoint -force -quiet
+        hdiutil detach $mntpoint -force -quiet
         /bin/sleep 10
         /bin/echo "`date`: Deleting disk image." >> ${logfile}
         /bin/rm /tmp/${dmgfile}
-        
+
         #Double check to see if the new version got updated
         newlyinstalledver=`/usr/bin/defaults read "/Library/Internet Plug-Ins/Flash Player.plugin/Contents/version" CFBundleShortVersionString`
         if [ "${latestver}" = "${newlyinstalledver}" ]; then
             /bin/echo "SUCCESS: Flash has been updated to version ${newlyinstalledver}"
             /bin/echo "`date`: SUCCESS: Flash has been updated to version ${newlyinstalledver}" >> ${logfile}
-        # /Library/Application\ Support/JAMF/bin/jamfHelper.app/Contents/MacOS/jamfHelper -windowType hud -title "Adobe Reader Updated" -description "Adobe Reader has been updated." &
         else
             /bin/echo "ERROR: Flash update unsuccessful, version remains at ${currentinstalledver}."
             /bin/echo "`date`: ERROR: Flash update unsuccessful, version remains at ${currentinstalledver}." >> ${logfile}
